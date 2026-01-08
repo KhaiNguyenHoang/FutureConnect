@@ -29,14 +29,9 @@ const TechnologySchema = new mongoose.Schema<ITechnology, ITechnologyModel>(
     },
     slug: {
       type: String,
-      required: true,
       unique: true,
       lowercase: true,
       trim: true,
-      match: [
-        /^[a-z0-9-]+$/,
-        "Slug can only contain lowercase letters, numbers, and hyphens",
-      ],
     },
     description: {
       type: String,
@@ -67,15 +62,15 @@ TechnologySchema.virtual("frameworkCount").get(function (this: ITechnology) {
   return this.frameworks.length;
 });
 
-TechnologySchema.pre("save", function (this: ITechnology) {
-  if (this.isModified("name")) {
+TechnologySchema.pre("validate", function (this: ITechnology) {
+  if (!this.slug && this.name) {
     this.slug = this.name
       .toLowerCase()
       .trim()
-      .replace(/[^a-z0-9\s-]/g, "")
-      .replace(/\s+/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "");
+      .replace(/[^a-z0-9\s-]/g, "") // Bỏ ký tự đặc biệt
+      .replace(/\s+/g, "-") // Thay khoảng trắng bằng -
+      .replace(/-+/g, "-") // Bỏ dấu - trùng lặp
+      .replace(/^-|-$/g, ""); // Bỏ dấu - ở đầu/cuối
   }
 });
 
@@ -119,6 +114,7 @@ TechnologySchema.methods.hasFramework = function (
   return this.frameworks.includes(normalizedFramework);
 };
 
+// Static Methods
 TechnologySchema.statics.findBySlug = function (
   this: ITechnologyModel,
   slug: string,

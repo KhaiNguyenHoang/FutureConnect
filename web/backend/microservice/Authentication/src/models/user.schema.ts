@@ -214,6 +214,8 @@ const UserSchema = new mongoose.Schema<IUser, IUserModel>(
     },
   },
 );
+
+// Indexes
 UserSchema.index({ email: 1 });
 UserSchema.index({ username: 1 });
 UserSchema.index({ "technologies.tech": 1 });
@@ -222,6 +224,7 @@ UserSchema.index({ githubId: 1 }, { sparse: true });
 UserSchema.index({ linkedinId: 1 }, { sparse: true });
 UserSchema.index({ isDeleted: 1 });
 
+// Virtuals
 UserSchema.virtual("skillCount").get(function (this: IUser) {
   return this.technologies.length;
 });
@@ -241,12 +244,14 @@ UserSchema.virtual("age").get(function (this: IUser) {
   return age;
 });
 
+// Middleware: Hash password
 UserSchema.pre("save", async function (this: IUser) {
   if (this.isModified("password") && this.password) {
     this.password = await bcrypt.hash(this.password, 10);
   }
 });
 
+// Middleware: Validate framework
 UserSchema.pre("save", async function (this: IUser) {
   if (this.isModified("technologies")) {
     for (const techEntry of this.technologies) {
@@ -265,18 +270,21 @@ UserSchema.pre("save", async function (this: IUser) {
   }
 });
 
+// Middleware: Auto-populate technologies
 UserSchema.pre(/^find/, function (this: any) {
   if (this.options?.autopopulate !== false) {
     this.populate("technologies.tech");
   }
 });
 
+// Middleware: Exclude soft deleted users
 UserSchema.pre(/^find/, function (this: any) {
   if (this.options?.includeDeleted !== true) {
     this.where({ isDeleted: { $ne: true } });
   }
 });
 
+// Instance Methods
 UserSchema.methods.comparePassword = async function (
   this: IUser,
   candidatePassword: string,
@@ -334,9 +342,11 @@ UserSchema.methods.getAge = function (this: IUser): number {
 UserSchema.methods.getMaxPossibleExperience = function (this: IUser): number {
   if (!this.dateOfBirth) return 0;
   const age = this.getAge();
+  // Giả sử bắt đầu học từ 10 tuổi
   return Math.max(0, age - 10);
 };
 
+// Static Methods
 UserSchema.statics.findByTechnology = function (
   this: IUserModel,
   techSlug: string,
