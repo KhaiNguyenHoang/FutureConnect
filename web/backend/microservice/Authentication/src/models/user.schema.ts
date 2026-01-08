@@ -346,7 +346,6 @@ UserSchema.methods.getMaxPossibleExperience = function (this: IUser): number {
   return Math.max(0, age - 10);
 };
 
-// Static Methods
 UserSchema.statics.findByTechnology = function (
   this: IUserModel,
   techSlug: string,

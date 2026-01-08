@@ -114,7 +114,6 @@ TechnologySchema.methods.hasFramework = function (
   return this.frameworks.includes(normalizedFramework);
 };
 
-// Static Methods
 TechnologySchema.statics.findBySlug = function (
   this: ITechnologyModel,
   slug: string,

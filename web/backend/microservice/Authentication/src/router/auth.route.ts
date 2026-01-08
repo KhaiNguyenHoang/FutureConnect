@@ -10,7 +10,6 @@ import {
 import { verifyEmailController } from "../controller/verify-email.controller";
 import { forgotPasswordController } from "../controller/forgot-password.controller";
 import { resetPasswordController } from "../controller/reset-password.controller";
-import { getUserInfoController } from "../controller/get-user-info.controller";
 import registerController from "../controller/register.controller";
 import { jwtPlugin } from "../util/jwt";
 
@@ -56,9 +55,16 @@ const authRoute = new Elysia({ prefix: "/api/auth" })
       ),
     }),
   })
-  .post("/logout", logoutController)
-  .post("/refresh", refreshController)
-
+  .post("/logout", logoutController, {
+    body: t.Object({
+      refreshToken: t.String(),
+    }),
+  })
+  .post("/refresh", refreshController, {
+    body: t.Object({
+      refreshToken: t.String(),
+    }),
+  })
   .get("/verify", verifyJwtController)
   .post("/verify-token", verifyJwtInternalController, {
     body: t.Object({
@@ -66,10 +72,14 @@ const authRoute = new Elysia({ prefix: "/api/auth" })
     }),
   })
   .get("/user-from-token", getUserFromTokenController)
-
   .get("/verify-email", verifyEmailController)
   .post("/forgot-password", forgotPasswordController)
-  .post("/reset-password", resetPasswordController)
-  .get("/me", getUserInfoController);
+  .post("/reset-password", resetPasswordController, {
+    body: t.Object({
+      userId: t.String(),
+      resetToken: t.String(),
+      password: t.String({ minLength: 6 }),
+    }),
+  });
 
 export default authRoute;

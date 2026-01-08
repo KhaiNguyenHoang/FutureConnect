@@ -25,11 +25,6 @@ interface RegisterBody {
   }>;
 }
 
-interface JWTPayload {
-  userId: string;
-  [key: string]: any;
-}
-
 interface JWT {
   sign(payload: any): Promise<string>;
   verify(token: string): Promise<any>;

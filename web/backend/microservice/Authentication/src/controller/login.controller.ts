@@ -1,14 +1,10 @@
 import type { Context } from "elysia";
 import { User } from "../models/user.schema";
+import { Token } from "../models/token.schema";
 
 interface LoginBody {
   email: string;
   password: string;
-}
-
-interface JWTPayload {
-  userId: string;
-  [key: string]: any;
 }
 
 interface JWT {
@@ -24,7 +20,6 @@ interface LoginContext {
   };
 }
 
-// Response types
 interface ErrorResponse {
   message: string;
 }
@@ -32,6 +27,7 @@ interface ErrorResponse {
 interface SuccessResponse {
   message: string;
   accessToken: string;
+  refreshToken: string;
   user: {
     id: string;
     email: string;
@@ -41,7 +37,6 @@ interface SuccessResponse {
 
 type LoginResponse = ErrorResponse | SuccessResponse;
 
-// Controller
 export const loginController = async ({
   body,
   set,
@@ -70,11 +65,28 @@ export const loginController = async ({
 
   const accessToken = await jwt.sign({
     userId: user._id.toString(),
+    type: "access",
+  });
+
+  const refreshToken = await jwt.sign({
+    userId: user._id.toString(),
+    type: "refresh",
+  });
+
+  const refreshTokenExpiresAt = new Date();
+  refreshTokenExpiresAt.setDate(refreshTokenExpiresAt.getDate() + 7);
+
+  await Token.create({
+    userId: user._id,
+    token: refreshToken,
+    type: "refresh",
+    expiresAt: refreshTokenExpiresAt,
   });
 
   return {
     message: "Login successful",
     accessToken,
+    refreshToken,
     user: {
       id: user._id.toString(),
       email: user.email,

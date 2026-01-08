@@ -6,6 +6,7 @@ import { connectDatabase } from "./config/database";
 import { jwtPlugin } from "./util/jwt";
 import authRoute from "./router/auth.route";
 import technologyRoute from "./router/technology.route";
+import userRoute from "./router/user.route";
 
 async function bootstrap() {
   await connectDatabase();
@@ -17,6 +18,7 @@ async function bootstrap() {
   app.use(jwtPlugin);
   app.use(authRoute);
   app.use(technologyRoute);
+  app.use(userRoute);
 
   app.listen(3001);
 
