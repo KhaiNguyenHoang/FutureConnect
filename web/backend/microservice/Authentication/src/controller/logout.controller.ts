@@ -1,5 +1,6 @@
 import { Context } from "elysia";
 import { Token } from "../models/token.schema";
+import redis from "../config/redis";
 
 interface LogoutBody {
   refreshToken: string;
@@ -13,7 +14,11 @@ export const logoutController = async ({
     const { refreshToken } = body;
 
     if (refreshToken) {
-      await Token.deleteOne({ token: refreshToken, type: "refresh" });
+      const tokenDoc = await Token.findOne({ token: refreshToken, type: "refresh" });
+      if (tokenDoc) {
+        await redis.del(`user:${tokenDoc.userId}`);
+        await tokenDoc.deleteOne();
+      }
     }
 
     return {

@@ -1,6 +1,7 @@
 import type { Context } from "elysia";
 import mongoose from "mongoose";
 import { User } from "../models/user.schema";
+import { publishEvent } from "../config/rabbitmq";
 
 interface RegisterBody {
   username: string;
@@ -113,6 +114,16 @@ const registerController = async ({
 
     const accessToken = await jwt.sign({
       userId: newUser._id.toString(),
+    });
+
+    // Publish User Created Event
+    await publishEvent("auth_events", {
+      event: "USER_CREATED",
+      data: {
+        id: newUser._id.toString(),
+        email: newUser.email,
+        username: newUser.username,
+      },
     });
 
     return {

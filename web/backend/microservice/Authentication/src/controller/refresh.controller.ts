@@ -1,6 +1,7 @@
 import { Context } from "elysia";
 import { Token } from "../models/token.schema";
 import { User } from "../models/user.schema";
+import redis from "../config/redis";
 
 interface RefreshBody {
   refreshToken: string;
@@ -55,7 +56,21 @@ export const refreshController = async ({
 
     await Token.deleteOne({ _id: storedToken._id });
 
-    const user = await User.findById(payload.userId);
+    // Check Redis first
+    const cachedUser = await redis.get(`user:${payload.userId}`);
+    let user;
+
+    if (cachedUser) {
+      user = JSON.parse(cachedUser);
+      // Ensure user object has _id for subsequent usage
+      if (!user._id) user._id = payload.userId;
+    } else {
+      user = await User.findById(payload.userId);
+      if (user) {
+        await redis.set(`user:${payload.userId}`, JSON.stringify(user), "EX", 3600);
+      }
+    }
+
     if (!user) {
       set.status = 404;
       return { message: "User not found" };

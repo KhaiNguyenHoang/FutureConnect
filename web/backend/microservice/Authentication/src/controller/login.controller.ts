@@ -1,6 +1,8 @@
 import type { Context } from "elysia";
 import { User } from "../models/user.schema";
 import { Token } from "../models/token.schema";
+import redis from "../config/redis";
+import { publishEvent } from "../config/rabbitmq";
 
 interface LoginBody {
   email: string;
@@ -83,14 +85,28 @@ export const loginController = async ({
     expiresAt: refreshTokenExpiresAt,
   });
 
+  const userResponse = {
+    id: user._id.toString(),
+    email: user.email,
+    username: user.username,
+  };
+
+  // Cache user data
+  await redis.set(`user:${user._id}`, JSON.stringify(userResponse), "EX", 3600);
+
+  // Publish User Logged In Event
+  await publishEvent("auth_events", {
+    event: "USER_LOGGED_IN",
+    data: {
+      userId: user._id.toString(),
+      email: user.email,
+    },
+  });
+
   return {
     message: "Login successful",
     accessToken,
     refreshToken,
-    user: {
-      id: user._id.toString(),
-      email: user.email,
-      username: user.username,
-    },
+    user: userResponse,
   };
 };

@@ -3,6 +3,9 @@ import { Elysia } from "elysia";
 import openapi from "@elysiajs/openapi";
 import corsConfig from "./config/cors";
 import { connectDatabase } from "./config/database";
+import { connectRabbitMQ } from "./config/rabbitmq";
+import { startDbSyncWorker } from "./workers/db-sync.worker";
+import "./config/redis"; // Initialize Redis connection
 import { jwtPlugin } from "./util/jwt";
 import authRoute from "./router/auth.route";
 import technologyRoute from "./router/technology.route";
@@ -10,6 +13,8 @@ import userRoute from "./router/user.route";
 
 async function bootstrap() {
   await connectDatabase();
+  await connectRabbitMQ();
+  await startDbSyncWorker();
 
   const app = new Elysia();
 

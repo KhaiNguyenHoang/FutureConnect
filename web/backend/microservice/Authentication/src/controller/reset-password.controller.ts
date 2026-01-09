@@ -2,6 +2,8 @@ import { Context } from "elysia";
 import bcrypt from "bcryptjs";
 import { User } from "../models/user.schema";
 import { Token } from "../models/token.schema";
+import redis from "../config/redis";
+import { publishEvent } from "../config/rabbitmq";
 
 interface ResetPasswordBody {
   userId: string;
@@ -41,8 +43,20 @@ export const resetPasswordController = async ({
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    user.password = hashedPassword;
-    await user.save();
+
+    // Write-Behind: 1. Invalidate Cache (or update if we knew the structure, but invalidation is safer for password change)
+    await redis.del(`user:${userId}`);
+
+    // Write-Behind: 2. Publish Event
+    await publishEvent("user_updates", {
+      event: "USER_DB_UPDATE",
+      data: {
+        userId: userId,
+        updateData: { password: hashedPassword }
+      },
+    });
+
+    // Note: We don't await user.save() here anymore for Write-Behind
 
     await Token.deleteOne({ token: resetToken, type: "reset" });
 
