@@ -1,7 +1,43 @@
-import { Elysia } from "elysia";
+import authRoute from "./router/auth.route";
+import { app } from "./setup";
 
-const app = new Elysia().get("/", () => "Hello Elysia").listen(3000);
+const bootstrap = async () => {
+  try {
+    app.use(authRoute);
+    app.onError(({ code, error, set }) => {
+      console.error("Global error:", { code, error });
+      if (code === "VALIDATION") {
+        set.status = 400;
+        return {
+          success: false,
+          message: "Validation error",
+          errors: error.message,
+        };
+      }
 
-console.log(
-  `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`
-);
+      if (code === "NOT_FOUND") {
+        set.status = 404;
+        return {
+          success: false,
+          message: "Route not found",
+        };
+      }
+
+      set.status = 500;
+      return {
+        success: false,
+        message: "Internal server error",
+        error: error,
+      };
+    });
+    app.listen(3001);
+    console.log(
+      `🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`,
+    );
+  } catch (error) {
+    console.error("Error:", error);
+    process.exit(1);
+  }
+};
+
+bootstrap();

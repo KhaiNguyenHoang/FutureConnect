@@ -1,0 +1,12 @@
+[package]
+name = "ai_training"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+burn = { version = "0.19.1", features = ["wgpu", "train", "ndarray"] }
+burn-ndarray = "0.19.1"
+burn-wgpu = "0.19.1"
+serde = "1.0.228"
+serde_json = "1.0.149"
+tokenizers = "0.22.2"
