@@ -1,18 +1,20 @@
-
 use axum::{
-    extract::{ws::{Message, WebSocket, WebSocketUpgrade}, State, Query},
-    response::Response,
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        Query, State,
+    },
     http::StatusCode,
+    response::Response,
 };
+use dashmap::{DashMap, DashSet};
 use futures::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use dashmap::{DashMap, DashSet};
 use tokio::sync::mpsc;
 
-use mongodb::Database;
+use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use mongodb::bson::doc;
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+use mongodb::Database;
 
 // UserId -> Sender
 pub type ConnectionState = Arc<DashMap<String, mpsc::UnboundedSender<Message>>>;
@@ -28,7 +30,7 @@ pub struct AppState {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub userId: String,
+    pub user_id: String,
     pub email: String,
     pub exp: usize,
 }
@@ -43,7 +45,7 @@ pub struct AuthParams {
 pub enum ClientMessage {
     #[serde(rename = "join")]
     Join { user_id: String },
-    
+
     #[serde(rename = "join_group")]
     JoinGroup { user_id: String, group_id: String },
 
@@ -53,17 +55,17 @@ pub enum ClientMessage {
     #[serde(rename = "chat")]
     Chat {
         target_id: String, // UserId or GroupId
-        is_group: bool, 
+        is_group: bool,
         content: Option<String>,
         attachments: Option<Vec<String>>,
-        kind: String, 
+        kind: String,
     },
 
     #[serde(rename = "signal")]
     Signal {
         target_id: String,
         payload: serde_json::Value,
-    }
+    },
 }
 
 pub async fn ws_handler(
@@ -76,9 +78,10 @@ pub async fn ws_handler(
         &params.token,
         &DecodingKey::from_secret(secret.as_bytes()),
         &Validation::new(Algorithm::HS256),
-    ).map_err(|_| StatusCode::UNAUTHORIZED)?;
+    )
+    .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    let user_id = token_data.claims.userId;
+    let user_id = token_data.claims.user_id;
     Ok(ws.on_upgrade(move |socket| handle_socket(socket, state, user_id)))
 }
 
@@ -90,7 +93,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
     state.connections.insert(user_id.clone(), tx.clone());
     println!("User {} connected (Authenticated)", user_id);
 
-    let mut send_task = tokio::spawn(async move {
+    let send_task = tokio::spawn(async move {
         while let Some(msg) = rx.recv().await {
             if sender.send(msg).await.is_err() {
                 break;
@@ -106,33 +109,43 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
             if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
                 match client_msg {
                     ClientMessage::Join { user_id: _ } => {
-                        // Already joined/authenticated. 
-                        // We ignore the user_id payload here to prevent spoofing, 
+                        // Already joined/authenticated.
+                        // We ignore the user_id payload here to prevent spoofing,
                         // or we could error if it doesn't match `my_user_id`.
                         // For now, no-op or just log.
                         // println!("Received join message for already auth user {}", my_user_id);
                     }
                     ClientMessage::JoinGroup { user_id, group_id } => {
-                       // Enforce user_id matches authenticated id?
-                       if user_id == my_user_id {
-                           state.groups.entry(group_id.clone())
+                        // Enforce user_id matches authenticated id?
+                        if user_id == my_user_id {
+                            state
+                                .groups
+                                .entry(group_id.clone())
                                 .or_insert_with(DashSet::new)
                                 .insert(user_id.clone());
-                           my_groups.push(group_id.clone());
-                           println!("User {} joined group {}", user_id, group_id);
-                       }
+                            my_groups.push(group_id.clone());
+                            println!("User {} joined group {}", user_id, group_id);
+                        }
                     }
                     ClientMessage::LeaveGroup { user_id, group_id } => {
-                         if user_id == my_user_id {
-                             if let Some(members) = state.groups.get(&group_id) {
-                                 members.remove(&user_id);
-                             }
-                         }
+                        if user_id == my_user_id {
+                            if let Some(members) = state.groups.get(&group_id) {
+                                members.remove(&user_id);
+                            }
+                        }
                     }
-                    ClientMessage::Chat { target_id, is_group, content, attachments, kind } => {
+                    ClientMessage::Chat {
+                        target_id,
+                        is_group,
+                        content,
+                        attachments,
+                        kind,
+                    } => {
                         let timestamp = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
-                        
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis() as i64;
+
                         let response = serde_json::json!({
                             "type": "chat",
                             "sender_id": my_user_id,
@@ -154,7 +167,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
                             "content": &content,
                             "attachments": &attachments,
                             "kind": &kind,
-                            "timestamp": timestamp 
+                            "timestamp": timestamp
                         };
                         let _ = collection.insert_one(doc, None).await;
 
@@ -185,15 +198,20 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
                             "payload": payload
                         });
                         let msg_str = serde_json::to_string(&signal_msg).unwrap();
-                        
+
                         // CALL HISTORY: If payload indicates call end
                         if let Some(type_str) = payload.get("type").and_then(|v| v.as_str()) {
                             if type_str == "bye" || type_str == "end-call" || type_str == "reject" {
                                 let timestamp = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64;
-                                
-                                let calls_coll = state.db.collection::<mongodb::bson::Document>("calls");
-                                let payload_bson = mongodb::bson::to_bson(&payload).unwrap_or(mongodb::bson::Bson::Null);
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_millis()
+                                    as i64;
+
+                                let calls_coll =
+                                    state.db.collection::<mongodb::bson::Document>("calls");
+                                let payload_bson = mongodb::bson::to_bson(&payload)
+                                    .unwrap_or(mongodb::bson::Bson::Null);
 
                                 let doc = doc! {
                                     "caller_id": &my_user_id,
@@ -219,10 +237,10 @@ async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
 
     state.connections.remove(&my_user_id);
     for gid in my_groups {
-            if let Some(members) = state.groups.get(&gid) {
-                members.remove(&my_user_id);
-            }
+        if let Some(members) = state.groups.get(&gid) {
+            members.remove(&my_user_id);
+        }
     }
-    
+
     send_task.abort();
 }

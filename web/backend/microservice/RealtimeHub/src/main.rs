@@ -1,5 +1,5 @@
-use realtime_hub::{db, ws};
 use realtime_hub::ws::AppState;
+use realtime_hub::{db, ws};
 
 use axum::{
     extract::{Query, State},
@@ -7,13 +7,13 @@ use axum::{
     routing::get,
     Router,
 };
-use serde::{Deserialize, Serialize};
+use dashmap::DashMap;
+use dotenv::dotenv;
 use futures::stream::TryStreamExt;
 use mongodb::bson::doc;
+use serde::Deserialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use dashmap::{DashMap, DashSet};
-use dotenv::dotenv;
 
 #[derive(Deserialize)]
 struct HistoryQuery {
@@ -29,7 +29,7 @@ async fn get_messages(
 ) -> Json<Vec<serde_json::Value>> {
     let collection = state.db.collection::<serde_json::Value>("messages");
     let limit = params.limit.unwrap_or(50);
-    
+
     let filter = if let Some(group_id) = params.group_id {
         doc! { "is_group": true, "target_id": group_id }
     } else if let Some(target_id) = params.target_id {
@@ -65,7 +65,7 @@ async fn get_calls(
 ) -> Json<Vec<serde_json::Value>> {
     let collection = state.db.collection::<serde_json::Value>("calls");
     let limit = params.limit.unwrap_or(20);
-    
+
     // Calls where I am caller OR callee
     let filter = doc! {
         "$or": [
