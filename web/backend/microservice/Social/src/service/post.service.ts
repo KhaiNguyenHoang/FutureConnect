@@ -5,6 +5,7 @@ import { Tag } from "../models/tag.model";
 import { TrendingService } from "./trending.service"; // We will refactor this later, for now import as is or refactor it next
 import { CacheKeys, cacheGet, cacheSet } from "../utils/redis.util";
 import { publishEvent } from "../utils/rabbitmq.util";
+import { Follow } from "../models/follow.model";
 
 type Context = Omit<InferContext<App>, "params"> & {
     params: Record<string, string>;
@@ -114,7 +115,18 @@ export const getFeedService = async (query: { userId?: string }, ctx: Context) =
             if (cachedFeed) return cachedFeed;
         }
 
-        const posts = await Post.find().sort({ createdAt: -1 }).skip(skip).limit(limit).lean();
+        // Get list of users I follow
+        const follows = await Follow.find({ followerId: userId }).select("followingId").lean();
+        const followingIds = follows.map(f => f.followingId);
+
+        // Include my own posts
+        followingIds.push(userId);
+
+        const posts = await Post.find({ authorId: { $in: followingIds } })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean();
 
         if (page === 1) {
             await cacheSet(CacheKeys.FEED(userId), posts, 60);
