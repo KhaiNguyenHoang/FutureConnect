@@ -5,10 +5,10 @@ import {
   getTech,
   updateTech,
 } from "../service/tech.service";
-import { app } from "../setup";
+import { baseApp } from "../setup";
 
 export const techRoute = new Elysia({ prefix: "/tech" })
-  .use(app)
+  .use(baseApp)
   .post(
     "/",
     async (ctx) => {

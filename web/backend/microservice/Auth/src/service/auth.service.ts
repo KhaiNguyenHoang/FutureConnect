@@ -8,7 +8,7 @@ import { db } from "../utils/database.util";
 import { and, eq } from "drizzle-orm";
 import { tokenSchema, userSchema } from "../database/schema";
 import { hashPassword, verifyPassword } from "../utils/password.util";
-import redis from "../utils/redis.util";
+import { redis, CacheKeys } from "../utils/redis.util";
 
 interface LoginBody {
   email: string;
@@ -38,12 +38,11 @@ export const loginService = async (body: LoginBody, ctx: Context) => {
     }
 
     let user;
-    const cacheKey = `user:email:${email}`;
-    const cachedUser = await redis.get(cacheKey);
+    const cacheKey = CacheKeys.userByEmail(email);
+    // Use getJson helper
+    user = await redis.getJson<any>(cacheKey);
 
-    if (cachedUser) {
-      user = JSON.parse(cachedUser);
-    } else {
+    if (!user) {
       const users = await db
         .select()
         .from(userSchema)
@@ -53,7 +52,8 @@ export const loginService = async (body: LoginBody, ctx: Context) => {
       user = users[0];
 
       if (user) {
-        await redis.set(cacheKey, JSON.stringify(user), "EX", 3600);
+        // Use setJson helper
+        await redis.setJson(cacheKey, user, 3600);
       }
     }
 
@@ -84,14 +84,14 @@ export const loginService = async (body: LoginBody, ctx: Context) => {
       expires_at: tokenExpiresAt,
     });
 
-    await redis.set(
-      `token:${refreshToken}`,
-      JSON.stringify({
+    // Use CacheKeys and setJson
+    await redis.setJson(
+      CacheKeys.token(refreshToken),
+      {
         user_id: user.id,
         token: refreshToken,
         expires_at: tokenExpiresAt,
-      }),
-      "EX",
+      },
       60 * 60 * 24 * 7,
     );
 
@@ -123,8 +123,8 @@ export const registerService = async (body: RegisterBody, ctx: Context) => {
       return { message: "Email, username, and password are required" };
     }
 
-    const cacheKey = `user:email:${email}`;
-    const cachedUser = await redis.get(cacheKey);
+    const cacheKey = CacheKeys.userByEmail(email);
+    const cachedUser = await redis.getJson<any>(cacheKey);
 
     if (cachedUser) {
       ctx.set.status = 400;
@@ -137,7 +137,7 @@ export const registerService = async (body: RegisterBody, ctx: Context) => {
       .where(eq(userSchema.email, email));
 
     if (users.length > 0) {
-      await redis.set(cacheKey, JSON.stringify(users[0]), "EX", 3600);
+      await redis.setJson(cacheKey, users[0], 3600);
       ctx.set.status = 400;
       return { message: "User already exists" };
     }
@@ -157,7 +157,7 @@ export const registerService = async (body: RegisterBody, ctx: Context) => {
       })
       .returning();
 
-    await redis.set(cacheKey, JSON.stringify(user), "EX", 3600);
+    await redis.setJson(cacheKey, user, 3600);
 
     const accessToken = await ctx.jwt.sign({
       userId: user.id,
@@ -174,14 +174,13 @@ export const registerService = async (body: RegisterBody, ctx: Context) => {
       expires_at: tokenExpiresAt,
     });
 
-    await redis.set(
-      `token:${refreshToken}`,
-      JSON.stringify({
+    await redis.setJson(
+      CacheKeys.token(refreshToken),
+      {
         user_id: user.id,
         token: refreshToken,
         expires_at: tokenExpiresAt,
-      }),
-      "EX",
+      },
       60 * 60 * 24 * 7,
     );
 
@@ -213,12 +212,10 @@ export const refreshService = async (body: RefreshBody, ctx: Context) => {
     }
 
     let token;
-    const cacheKey = `token:${refreshToken}`;
-    const cachedToken = await redis.get(cacheKey);
+    const cacheKey = CacheKeys.token(refreshToken);
+    token = await redis.getJson<any>(cacheKey);
 
-    if (cachedToken) {
-      token = JSON.parse(cachedToken);
-    } else {
+    if (!token) {
       const tokens = await db
         .select()
         .from(tokenSchema)
@@ -230,7 +227,7 @@ export const refreshService = async (body: RefreshBody, ctx: Context) => {
           (new Date(token.expires_at).getTime() - Date.now()) / 1000,
         );
         if (ttl > 0) {
-          await redis.set(cacheKey, JSON.stringify(token), "EX", ttl);
+          await redis.setJson(cacheKey, token, ttl);
         }
       }
     }
@@ -248,11 +245,21 @@ export const refreshService = async (body: RefreshBody, ctx: Context) => {
     }
 
     let user;
-    user = await db
-      .select()
-      .from(userSchema)
-      .where(eq(userSchema.id, token.user_id))
-      .then((res) => res[0]);
+    const userCacheKey = CacheKeys.user(token.user_id);
+    user = await redis.getJson<any>(userCacheKey);
+
+    if (!user) {
+      user = await db
+        .select()
+        .from(userSchema)
+        .where(eq(userSchema.id, token.user_id))
+        .then((res) => res[0]);
+
+      if (user) {
+        await redis.setJson(userCacheKey, user, 3600);
+      }
+    }
+
 
     if (!user) {
       ctx.set.status = 401;
@@ -295,7 +302,7 @@ export const logoutService = async (body: LogoutBody, ctx: Context) => {
     }
 
     await db.delete(tokenSchema).where(eq(tokenSchema.token, refreshToken));
-    await redis.del(`token:${refreshToken}`);
+    await redis.del(CacheKeys.token(refreshToken));
 
     ctx.set.status = 200;
     return { message: "Logout successful" };

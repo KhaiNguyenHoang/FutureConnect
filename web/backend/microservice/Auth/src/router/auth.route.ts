@@ -5,10 +5,10 @@ import {
   refreshService,
   logoutService,
 } from "../service/auth.service";
-import { app } from "../setup";
+import { baseApp } from "../setup";
 
 const authRoute = new Elysia({ prefix: "/auth" })
-  .use(app)
+  .use(baseApp)
   .post(
     "/login",
     async (ctx) => {

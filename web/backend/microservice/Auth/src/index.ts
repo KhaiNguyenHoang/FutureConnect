@@ -1,9 +1,14 @@
+import { techRoute } from "./router/tech.route";
+import { frameworkRoute } from "./router/framework.route";
+import { userRoute } from "./router/user.route";
 import authRoute from "./router/auth.route";
 import { app } from "./setup";
-
 const bootstrap = async () => {
   try {
     app.use(authRoute);
+    app.use(techRoute);
+    app.use(frameworkRoute);
+    app.use(userRoute);
     app.onError(({ code, error, set }) => {
       console.error("Global error:", { code, error });
       if (code === "VALIDATION") {

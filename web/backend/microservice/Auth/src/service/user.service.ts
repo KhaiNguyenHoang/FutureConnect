@@ -2,7 +2,7 @@ import { Context } from "elysia";
 import { db } from "../utils/database.util";
 import { userSchema } from "../database/schema";
 import { eq } from "drizzle-orm";
-import redis from "../utils/redis.util";
+import { redis, CacheKeys } from "../utils/redis.util";
 
 export const getUser = async (params: any, ctx: Context) => {
   try {
@@ -12,12 +12,12 @@ export const getUser = async (params: any, ctx: Context) => {
       ctx.set.status = 400;
       return { success: false, message: "Invalid user ID" };
     }
-    const cacheKey = `user:${id}`;
-    const cachedUser = await redis.get(cacheKey);
+    const cacheKey = CacheKeys.user(id);
+    const cachedUser = await redis.getJson<any>(cacheKey);
 
     if (cachedUser) {
       ctx.set.status = 200;
-      return { success: true, data: JSON.parse(cachedUser) };
+      return { success: true, data: cachedUser };
     }
 
     const users = await db
@@ -41,7 +41,7 @@ export const getUser = async (params: any, ctx: Context) => {
     }
 
     // Cache user (1 hour)
-    await redis.set(cacheKey, JSON.stringify(user), "EX", 3600);
+    await redis.setJson(cacheKey, user, 3600);
 
     return { success: true, data: user };
   } catch (error) {
@@ -80,9 +80,9 @@ export const updateUser = async (params: any, data: any, ctx: Context) => {
     // Invalidate caches
     // We need to invalidate `user:{id}` AND `user:email:{email}`
     // `updatedUser` has the email, so we can use it.
-    await redis.del(`user:${id}`);
+    await redis.del(CacheKeys.user(id));
     if (updatedUser.email) {
-      await redis.del(`user:email:${updatedUser.email}`);
+      await redis.del(CacheKeys.userByEmail(updatedUser.email));
     }
 
     return { success: true, data: updatedUser };
@@ -116,9 +116,9 @@ export const deleteUser = async (userId: string, ctx: Context) => {
     const deletedUser = user[0];
 
     // Invalidate caches to prevent login
-    await redis.del(`user:${id}`);
+    await redis.del(CacheKeys.user(id));
     if (deletedUser.email) {
-      await redis.del(`user:email:${deletedUser.email}`);
+      await redis.del(CacheKeys.userByEmail(deletedUser.email));
     }
 
     ctx.set.status = 200;

@@ -2,7 +2,7 @@ import { Context } from "elysia";
 import { db } from "../utils/database.util";
 import { techSchema } from "../database/schema";
 import { eq } from "drizzle-orm";
-import redis from "../utils/redis.util";
+import { redis, CacheKeys } from "../utils/redis.util";
 
 interface TechBody {
   nameBody: string;
@@ -44,12 +44,12 @@ export const getTech = async (params: any, ctx: Context) => {
       return { message: "Missing id" };
     }
 
-    const cacheKey = `tech:${id}`;
-    const cachedTech = await redis.get(cacheKey);
+    const cacheKey = CacheKeys.tech(id);
+    const cachedTech = await redis.getJson<any>(cacheKey);
 
     if (cachedTech) {
       ctx.set.status = 200;
-      return { message: "Tech found (cached)", tech: JSON.parse(cachedTech) };
+      return { message: "Tech found (cached)", tech: cachedTech };
     }
 
     const tech = await db
@@ -62,7 +62,7 @@ export const getTech = async (params: any, ctx: Context) => {
       return { message: "Tech not found" };
     }
 
-    await redis.set(cacheKey, JSON.stringify(tech), "EX", 3600);
+    await redis.setJson(cacheKey, tech, 3600);
 
     ctx.set.status = 200;
     return { message: "Tech found", tech };
@@ -91,7 +91,7 @@ export const updateTech = async (params: any, body: TechBody, ctx: Context) => {
 
     await db.update(techSchema).set({ name }).where(eq(techSchema.id, id));
 
-    await redis.del(`tech:${id}`);
+    await redis.del(CacheKeys.tech(id));
 
     ctx.set.status = 200;
     return { message: "Tech updated successfully" };
@@ -113,7 +113,7 @@ export const deleteTech = async (params: any, ctx: Context) => {
 
     await db.delete(techSchema).where(eq(techSchema.id, id));
 
-    await redis.del(`tech:${id}`);
+    await redis.del(CacheKeys.tech(id));
 
     ctx.set.status = 200;
     return { message: "Tech deleted successfully" };

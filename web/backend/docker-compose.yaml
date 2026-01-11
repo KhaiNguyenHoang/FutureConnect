@@ -7,6 +7,9 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     networks:
@@ -22,9 +25,21 @@ services:
     networks:
       - app-network
 
+  mongo:
+    image: mongo:latest
+    container_name: mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app-network
+
 volumes:
   rabbitmq_data:
   redis_data:
+  mongo_data:
 
 networks:
   app-network:

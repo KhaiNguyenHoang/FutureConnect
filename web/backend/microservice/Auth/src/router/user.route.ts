@@ -1,9 +1,9 @@
 import Elysia, { t } from "elysia";
 import { getUser, updateUser, deleteUser } from "../service/user.service";
-import { app } from "../setup";
+import { baseApp } from "../setup";
 
 export const userRoute = new Elysia({ prefix: "/user" })
-  .use(app)
+  .use(baseApp)
   .get("/:id", async (ctx) => {
     return getUser(ctx.params, ctx);
   })
